@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29709.97
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BSerial", "BSerial.vcxproj", "{E2109094-93D5-48DB-8FF1-F078E2ED35DD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E2109094-93D5-48DB-8FF1-F078E2ED35DD}.Debug|x64.ActiveCfg = Debug|x64
+		{E2109094-93D5-48DB-8FF1-F078E2ED35DD}.Debug|x64.Build.0 = Debug|x64
+		{E2109094-93D5-48DB-8FF1-F078E2ED35DD}.Debug|x86.ActiveCfg = Debug|Win32
+		{E2109094-93D5-48DB-8FF1-F078E2ED35DD}.Debug|x86.Build.0 = Debug|Win32
+		{E2109094-93D5-48DB-8FF1-F078E2ED35DD}.Release|x64.ActiveCfg = Release|x64
+		{E2109094-93D5-48DB-8FF1-F078E2ED35DD}.Release|x64.Build.0 = Release|x64
+		{E2109094-93D5-48DB-8FF1-F078E2ED35DD}.Release|x86.ActiveCfg = Release|Win32
+		{E2109094-93D5-48DB-8FF1-F078E2ED35DD}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {37AE1CD8-F3AB-4B9F-871F-41E069BB9913}
+	EndGlobalSection
+EndGlobal
