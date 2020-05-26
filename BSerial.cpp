@@ -52,11 +52,13 @@
 #endif /* __DBG_FUNC */
 
 
-
+#define TIMESTAMP_DATE      1
 
 
 #define READ_BUFSZ          1024
 static char rbuf[READ_BUFSZ];
+static char rbuf_nocsi[READ_BUFSZ];
+
 HANDLE hLog;
 HANDLE hCom;
 HANDLE hReadMutex;
@@ -65,17 +67,25 @@ BOOL RunFlag = TRUE;
 
 void log_timestamp(void)
 {
-    char buffer[80];
     BOOL ret;
     DWORD len;
     float sec;
+    static char* buffer = NULL;
 
-    SYSTEMTIME t;
-    GetSystemTime(&t); // or GetLocalTime(&t)
-    sec = (float)t.wSecond + ((float)(t.wMilliseconds) / 1000);
-    sprintf(buffer, "\n[%04d/%02d/%02d %02d:%02d:%02.05f] ",
-        t.wYear, t.wMonth, t.wDay,
-        t.wHour, t.wMinute, sec);
+    if (!buffer) {
+        buffer = (char*)malloc(64);
+        char* p = buffer;
+        SYSTEMTIME t;
+        GetLocalTime(&t); // or GetSystemTime(&t)
+        sec = (float)t.wSecond + ((float)(t.wMilliseconds) / 1000);
+
+#if TIMESTAMP_DATE
+        p += sprintf(p, "\n[%04d/%02d/%02d ", t.wYear, t.wMonth, t.wDay);
+#else
+        p += sprintf(p, "\n[");
+#endif
+        sprintf(p, "%02d:%02d:%08.05f] ", t.wHour, t.wMinute, sec);
+    }
 
     ret = WriteFile(hLog, buffer, (DWORD)strlen(buffer), &len, NULL);
     if (!ret) {
@@ -109,6 +119,78 @@ const char* log_file_name(int port)
     return buffer;
 
 }
+
+
+
+#define ESC		27
+
+/* parameter bytes judgement */
+int is_param_byte(char c)
+{
+    if (c >= 0x30 && c <= 0x3F)
+        return 1;
+
+    return 0;
+}
+
+/* intermediate bytes judgement */
+int is_interm_byte(char c)
+{
+    if (c >= 0x20 && c <= 0x2F)
+        return 1;
+
+    return 0;
+}
+
+/* intermediate bytes judgement */
+int is_final_byte(char c)
+{
+    if (c >= 0x40 && c <= 0x7F)
+        return 1;
+
+    return 0;
+}
+
+char* skip_csi(char* buf_in, char* buf_out, DWORD *size)
+{
+    int i, j, pi = 0, po = 0, tot_len = *size, len;
+    char* ret = buf_in;
+
+    for (i = 0; i < tot_len; i++) {
+        if (buf_in[i] == ESC && buf_in[i + 1] == '[') {
+
+            j = i + 2;
+            /* skip parameter bytes */
+            while (is_param_byte(buf_in[j]) && j < tot_len) j++;
+
+            /* skip intermediate bytes */
+            while (is_interm_byte(buf_in[j]) && j < tot_len) j++;
+
+            /* found CSI key */
+            if (is_final_byte(buf_in[j]) && j < tot_len) {
+                len = i - pi;
+                memcpy(buf_out + po, buf_in + pi, len);
+                pi = j + 1;
+                po += len;
+                i = j;
+            }
+        }
+    }
+
+    if (pi) {
+        len = i - pi;
+        memcpy(buf_out + po, buf_in + pi, len);
+        tot_len = po + len;
+        buf_out[tot_len] = 0;
+        *size = tot_len;
+        ret = buf_out;
+    }
+
+    return ret;
+}
+
+
+
 
 #define LOG_PATH_LEN            1024
 const char* ExeDir(void)
@@ -187,7 +269,6 @@ int ListDevice(const GUID& guid, int portNo[PORT_NUM_MAX], TCHAR portName[PORT_N
             return false;
         }
         buf[len] = 0;
-        wprintf(_T("Port Nmae:%s, len:%d\n"), buf, len);
         swscanf_s(buf, _T("COM%d"), &portNo[nDevice]);
 #if 0
         wprintf(L"Friendly name:%s\n", portName[nDevice]);
@@ -198,7 +279,7 @@ int ListDevice(const GUID& guid, int portNo[PORT_NUM_MAX], TCHAR portName[PORT_N
 
     SetupDiDestroyDeviceInfoList(hDeviceInfo);
 
-    return true;
+    return nDevice;
 }
 
 BOOL BSerialInit(void)
@@ -212,6 +293,7 @@ BOOL BSerialInit(void)
     int number = ListDevice(GUID_DEVINTERFACE_COMPORT, portNo, portName);
     BOOL ret;
 
+    setlocale(LC_ALL, "Japanese");
     std::cout << "Select a COM Ports:\n";
     for (int i = 0; i < number; i++) {
         wprintf(_T("%d: %s\n"), i, portName[i]);
@@ -287,6 +369,8 @@ BOOL BSerialInit(void)
     hWriteMutex = CreateMutexW(NULL, FALSE, NULL);      // Set
 
 
+
+
     return TRUE;
 
 }
@@ -300,13 +384,15 @@ void ReadProc(void* pMyID)
     int newline_flag = 0;
     BOOL ret;
     DWORD dwEventMask;
+    char* buf_log;
 
     //Setting Receive Mask
     SetCommMask(hCom, EV_RXCHAR);
 
     while (RunFlag) {
         if (!WaitCommEvent(hCom, &dwEventMask, NULL)) {
-            DBG_LOG("WaitCommEvent Failed! canceled?\n");
+//            DBG_LOG("WaitCommEvent Failed! canceled?\n");
+            Sleep(1);
             continue;
         }
 
@@ -315,15 +401,17 @@ void ReadProc(void* pMyID)
             rbuf[len] = 0;
             std::cout << rbuf;
 
+            buf_log = skip_csi(rbuf, rbuf_nocsi, &len);
+
             for (DWORD i = 0; i < len; i++) {
-                if (rbuf[i] == '\r' || rbuf[i] == '\n') {
+                if (buf_log[i] == '\r' || buf_log[i] == '\n') {
                     if (!newline_flag) {
                         log_timestamp();
                         newline_flag = 1;
                     }
                 }
                 else {
-                    log_char(rbuf[i]);
+                    log_char(buf_log[i]);
                     newline_flag = 0;
                 }
             }
@@ -332,47 +420,65 @@ void ReadProc(void* pMyID)
 }
 
 
-void WriteProc(void* pMyID)
+
+
+BOOL IsQuit(char c)
 {
-    char* MyID = (char*)pMyID;
-    char c;
-    DWORD len;
-    BOOL ret;
+    static const char quit_string[] = { 2, 'q', 'u', 'i', 't', 3 };  // Ctrl-B quit Ctrl-C
+    static int i = 0;
 
-    while (RunFlag) {
-        c = _getch();
-//        WaitForSingleObject(hWriteMutex, INFINITE);
-        ret = WriteFile(hCom, &c, 1, &len, NULL);
-        if (ret == FALSE)
-        {
-            printf_s("Fail to Written\n");
-        }
+    if (c == quit_string[0]) {
+        i = 1;
+        return FALSE;
+    }
 
+    if (i == -1) {
+        return FALSE;
+    }
+
+    if (quit_string[i] == c) {
+        i++;
+    }
+
+    if (i == sizeof(quit_string)) {
+        i = -1;
+        return TRUE;
+    }
+    else {
+        return FALSE;
     }
 
 }
 
 
 
-
-
-
-
-
 int main(void)
 {
     int     ThreadNr = 0;                    // Number of threads started
-    DWORD dwEventMask;
     int ret;
+    char c;
+    DWORD len;
+
     if (BSerialInit() == FALSE) {
         printf_s("Serial Port initialization failed, exit!\n");
         return -1;
     }
 
     _beginthread(ReadProc, 0, &ThreadNr);
-    _beginthread(WriteProc, 0, &ThreadNr);
+
 
     while (RunFlag) {
+        c = _getch();
+        if (IsQuit(c)) RunFlag = FALSE;
+
+        //        WaitForSingleObject(hWriteMutex, INFINITE);
+        CancelIoEx(hCom, NULL);
+        ret = WriteFile(hCom, &c, 1, &len, NULL);
+        if (ret == FALSE)
+        {
+            printf_s("Fail to Written\n");
+        }
+
     }
     system("pause");
     return 0;
