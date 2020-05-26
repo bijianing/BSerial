@@ -52,7 +52,7 @@
 #endif /* __DBG_FUNC */
 
 
-#define TIMESTAMP_DATE      1
+#define TIMESTAMP_DATE      0
 
 
 #define READ_BUFSZ          1024
@@ -61,8 +61,7 @@ static char rbuf_nocsi[READ_BUFSZ];
 
 HANDLE hLog;
 HANDLE hCom;
-HANDLE hReadMutex;
-HANDLE hWriteMutex;
+HANDLE hReadBufferMutex;
 BOOL RunFlag = TRUE;
 
 void log_timestamp(void)
@@ -70,22 +69,19 @@ void log_timestamp(void)
     BOOL ret;
     DWORD len;
     float sec;
-    static char* buffer = NULL;
+    static char buffer[32];
+    char* p = buffer;
 
-    if (!buffer) {
-        buffer = (char*)malloc(64);
-        char* p = buffer;
-        SYSTEMTIME t;
-        GetLocalTime(&t); // or GetSystemTime(&t)
-        sec = (float)t.wSecond + ((float)(t.wMilliseconds) / 1000);
+    SYSTEMTIME t;
+    GetLocalTime(&t); // or GetSystemTime(&t)
+    sec = (float)t.wSecond + ((float)(t.wMilliseconds) / 1000);
 
 #if TIMESTAMP_DATE
-        p += sprintf(p, "\n[%04d/%02d/%02d ", t.wYear, t.wMonth, t.wDay);
+    p += sprintf(p, "\n[%04d/%02d/%02d ", t.wYear, t.wMonth, t.wDay);
 #else
-        p += sprintf(p, "\n[");
+    p += sprintf(p, "\n[");
 #endif
-        sprintf(p, "%02d:%02d:%08.05f] ", t.wHour, t.wMinute, sec);
-    }
+    sprintf(p, "%02d:%02d:%07.04f]", t.wHour, t.wMinute, sec);
 
     ret = WriteFile(hLog, buffer, (DWORD)strlen(buffer), &len, NULL);
     if (!ret) {
@@ -93,16 +89,6 @@ void log_timestamp(void)
     }
 }
 
-static void log_char(char c)
-{
-    int ret;
-    DWORD len;
-
-    ret = WriteFile(hLog, &c, 1, &len, NULL);
-    if (!ret) {
-        DBG_ERR("Write timestamp Failed\n");
-    }
-}
 
 const char* log_file_name(int port)
 {
@@ -189,7 +175,94 @@ char* skip_csi(char* buf_in, char* buf_out, DWORD *size)
     return ret;
 }
 
+typedef enum CSI_State {
+    CsiStateNone,
+    CsiStateWaitStart,
+    CsiStateWaitParam,
+    CsiStateWaitInterm,
+} CSI_State_t;
 
+BOOL skipCsiSeq(char c)
+{
+    BOOL ret = FALSE;
+    static CSI_State_t stat = CsiStateNone;
+
+    switch (stat) {
+    case CsiStateNone:
+        if (c == ESC) {
+            stat = CsiStateWaitStart;
+            ret = TRUE;
+        }
+        break;
+
+    case CsiStateWaitStart:
+        if (c == '[') {
+            stat = CsiStateWaitParam;
+            ret = TRUE;
+        }
+        else {
+            stat = CsiStateNone;
+            ret = FALSE;
+        }
+        break;
+
+    case CsiStateWaitParam:
+        if (is_param_byte(c)) {
+            ret = TRUE;
+        }
+        else if (is_interm_byte(c)) {
+            stat = CsiStateWaitInterm;
+            ret = TRUE;
+        }
+        else if (is_final_byte(c)) {
+            stat = CsiStateNone;
+            ret = TRUE;
+        }
+        else {
+            stat = CsiStateNone;
+            ret = FALSE;
+        }
+        break;
+
+    case CsiStateWaitInterm:
+        if (is_interm_byte(c)) {
+            ret = TRUE;
+        }
+        else if (is_final_byte(c)) {
+            stat = CsiStateNone;
+            ret = TRUE;
+        }
+        else {
+            stat = CsiStateNone;
+            ret = FALSE;
+        }
+        break;
+
+    default:
+        stat = CsiStateNone;
+        ret = FALSE;
+    break;
+    }
+
+    return ret;
+}
+
+
+static void log_char(char c)
+{
+    int ret;
+    DWORD len;
+    BOOL csi = skipCsiSeq(c);
+
+    if (csi) {
+        return;
+    }
+
+    ret = WriteFile(hLog, &c, 1, &len, NULL);
+    if (!ret) {
+        DBG_ERR("Write timestamp Failed\n");
+    }
+}
 
 
 #define LOG_PATH_LEN            1024
@@ -294,13 +367,18 @@ BOOL BSerialInit(void)
     BOOL ret;
 
     setlocale(LC_ALL, "Japanese");
-    std::cout << "Select a COM Ports:\n";
+    std::cout << "Select a COM Ports (default: 0):\n";
     for (int i = 0; i < number; i++) {
         wprintf(_T("%d: %s\n"), i, portName[i]);
     }
 
     select = getchar();
-    select -= '0';
+    if (select == '\r' || select == '\n') {
+        select = 0;
+    }
+    else {
+        select -= '0';
+    }
     if (select > number || select < 0) {
         DBG_ERR("Please input correct number from %d to %d\n", 0, number - 1);
         return FALSE;
@@ -365,8 +443,7 @@ BOOL BSerialInit(void)
         Sleep(1000);
     }
 
-    hReadMutex = CreateMutexW(NULL, FALSE, NULL);      // Set
-    hWriteMutex = CreateMutexW(NULL, FALSE, NULL);      // Set
+    hReadBufferMutex = CreateMutexW(NULL, TRUE, NULL);      // Set
 
 
 
@@ -401,17 +478,15 @@ void ReadProc(void* pMyID)
             rbuf[len] = 0;
             std::cout << rbuf;
 
-            buf_log = skip_csi(rbuf, rbuf_nocsi, &len);
-
             for (DWORD i = 0; i < len; i++) {
-                if (buf_log[i] == '\r' || buf_log[i] == '\n') {
+                if (rbuf[i] == '\r' || rbuf[i] == '\n') {
                     if (!newline_flag) {
                         log_timestamp();
                         newline_flag = 1;
                     }
                 }
                 else {
-                    log_char(buf_log[i]);
+                    log_char(rbuf[i]);
                     newline_flag = 0;
                 }
             }
