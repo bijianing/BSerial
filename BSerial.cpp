@@ -52,7 +52,7 @@
 #endif /* __DBG_FUNC */
 
 
-#define TIMESTAMP_DATE      0
+#define TIMESTAMP_DATE      1
 
 
 #define READ_BUFSZ          1024
@@ -81,7 +81,7 @@ void log_timestamp(void)
 #else
     p += sprintf(p, "\n[");
 #endif
-    sprintf(p, "%02d:%02d:%07.04f]", t.wHour, t.wMinute, sec);
+    sprintf(p, "%02d:%02d:%07.04f] ", t.wHour, t.wMinute, sec);
 
     ret = WriteFile(hLog, buffer, (DWORD)strlen(buffer), &len, NULL);
     if (!ret) {
