@@ -52,7 +52,10 @@
 #endif /* __DBG_FUNC */
 
 
-#define TIMESTAMP_DATE      1
+#define TIMESTAMP_DATE          1
+#define ESC		                ((char)0x1b)
+#define ESC_ARROW		        ((char)0xe0)
+
 
 
 #define READ_BUFSZ          1024
@@ -107,8 +110,6 @@ const char* log_file_name(int port)
 }
 
 
-
-#define ESC		27
 
 /* parameter bytes judgement */
 int is_param_byte(char c)
@@ -544,16 +545,79 @@ int main(void)
 
     while (RunFlag) {
         c = _getch();
-        if (IsQuit(c)) RunFlag = FALSE;
-
-        //        WaitForSingleObject(hWriteMutex, INFINITE);
-        CancelIoEx(hCom, NULL);
-        ret = WriteFile(hCom, &c, 1, &len, NULL);
-        if (ret == FALSE)
-        {
-            printf_s("Fail to Written\n");
+        if (IsQuit(c)) {
+            RunFlag = FALSE;
+            continue;
         }
 
+        // process arrow key
+        if (c == ESC_ARROW) {
+            char buf[16];
+            int sz = 3;
+            buf[0] = ESC;
+            buf[1] = '[';
+
+            c = _getch();
+            switch (c)
+            {
+            case 'H':
+                buf[2] = 'A';
+                break;
+
+            case 'P':
+                buf[2] = 'B';
+                break;
+
+            case 'M':
+                buf[2] = 'C';
+                break;
+
+            case 'K':
+                buf[2] = 'D';
+                break;
+
+            case 'S':
+                buf[2] = '3';
+                buf[3] = '~';
+                sz = 4;
+                break;
+
+            case 'G':
+                buf[2] = '1';
+                buf[3] = '~';
+                sz = 4;
+                break;
+
+            case 'O':
+                buf[2] = '4';
+                buf[3] = '~';
+                sz = 4;
+                break;
+
+            default:
+                sz = 0;
+                break;
+            }
+
+            if (sz > 0) {
+                CancelIoEx(hCom, NULL);
+                ret = WriteFile(hCom, buf, sz, &len, NULL);
+                if (ret == FALSE)
+                {
+                    printf_s("Fail to Written\n");
+                }
+            }
+        }
+        else {
+            //        WaitForSingleObject(hWriteMutex, INFINITE);
+            CancelIoEx(hCom, NULL);
+            ret = WriteFile(hCom, &c, 1, &len, NULL);
+            if (ret == FALSE)
+            {
+                printf_s("Fail to Written\n");
+            }
+
+        }
     }
     system("pause");
     return 0;
