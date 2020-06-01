@@ -54,7 +54,8 @@
 
 #define TIMESTAMP_DATE          1
 #define ESC		                ((char)0x1b)
-#define ESC_ARROW		        ((char)0xe0)
+#define ESC_ARROW1		        ((char)0x00)
+#define ESC_ARROW2		        ((char)0xe0)
 
 
 
@@ -535,6 +536,8 @@ int main(void)
     char c;
     DWORD len;
 
+    printf_s("Bserial Build:%s %s\n", __DATE__, __TIME__);
+
     if (BSerialInit() == FALSE) {
         printf_s("Serial Port initialization failed, exit!\n");
         return -1;
@@ -551,7 +554,7 @@ int main(void)
         }
 
         // process arrow key
-        if (c == ESC_ARROW) {
+        if (c == ESC_ARROW1 || c == ESC_ARROW2) {
             char buf[16];
             int sz = 3;
             buf[0] = ESC;
