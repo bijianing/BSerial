@@ -537,6 +537,7 @@ int main(void)
     DWORD len;
 
     printf_s("Bserial Build:%s %s\n", __DATE__, __TIME__);
+    printf_s("To quit, Press Ctrl-B quit Ctrl-C\n\n");
 
     if (BSerialInit() == FALSE) {
         printf_s("Serial Port initialization failed, exit!\n");
