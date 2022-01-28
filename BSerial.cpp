@@ -59,7 +59,7 @@
 
 
 
-#define READ_BUFSZ          1024
+#define READ_BUFSZ          (1024 * 1024)
 static char rbuf[READ_BUFSZ];
 static char rbuf_nocsi[READ_BUFSZ];
 
