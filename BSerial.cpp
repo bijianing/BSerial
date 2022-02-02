@@ -61,12 +61,12 @@
 
 #define READ_BUFSZ          (1024 * 1024)
 static char rbuf[READ_BUFSZ];
-static char rbuf_nocsi[READ_BUFSZ];
 
 HANDLE hLog;
 HANDLE hCom;
 HANDLE hReadBufferMutex;
 BOOL RunFlag = TRUE;
+DWORD baudrate = 115200;
 
 void log_timestamp(void)
 {
@@ -413,7 +413,7 @@ BOOL BSerialInit(void)
         CloseHandle(hCom);
         return FALSE;
     }
-    dcbSerialParams.BaudRate = CBR_115200;      //BaudRate = 9600
+    dcbSerialParams.BaudRate = baudrate;
     dcbSerialParams.ByteSize = 8;             //ByteSize = 8
     dcbSerialParams.StopBits = ONESTOPBIT;    //StopBits = 1
     dcbSerialParams.Parity = NOPARITY;      //Parity = None
@@ -529,7 +529,7 @@ BOOL IsQuit(char c)
 
 
 
-int main(void)
+int main(int argc, const char*argv[])
 {
     int     ThreadNr = 0;                    // Number of threads started
     int ret;
@@ -538,6 +538,40 @@ int main(void)
 
     printf_s("Bserial Build:%s %s\n", __DATE__, __TIME__);
     printf_s("To quit, Press Ctrl-B quit Ctrl-C\n\n");
+
+    if (argc > 1) {
+        int arg1 = atoi(argv[1]);
+        switch (arg1)
+        {
+        case 110:
+        case 300:
+        case 600:
+        case 1200:
+        case 2400:
+        case 4800:
+        case 9600:
+        case 19200:
+        case 20833:
+        case 38400:
+        case 57600:
+        case 76800:
+        case 115200:
+        case 230400:
+        case 460800:
+        case 614400:
+        case 921600:
+        case 1382400:
+        case 1843200:
+        case 2777500:
+        case 3000000:
+            baudrate = arg1;
+            break;
+
+        default:
+            printf_s("Usage: %s [baudrate(default:115200)]\n\n", argv[0]);
+            break;
+        }
+    }
 
     if (BSerialInit() == FALSE) {
         printf_s("Serial Port initialization failed, exit!\n");
